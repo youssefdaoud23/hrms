@@ -47,8 +47,8 @@ services:
       - .:/workspace
       - frappe-bench-data:/home/frappe/frappe-bench
     ports:
-      - "${HRMS_HOST_BIND:-127.0.0.1}:8000:8000"
-      - "${HRMS_HOST_BIND:-127.0.0.1}:9000:9000"
+      - "${HRMS_HOST_BIND:-127.0.0.1}:${HRMS_HTTP_PORT:-8000}:8000"
+      - "${HRMS_HOST_BIND:-127.0.0.1}:${HRMS_SOCKETIO_PORT:-9000}:9000"
     restart: unless-stopped
 
 volumes:
