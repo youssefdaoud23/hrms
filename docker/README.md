@@ -1,45 +1,72 @@
-# Local Docker development setup (Ubuntu / WSL2)
+# Reproducible local Docker setup (Ubuntu, WSL2, Linux)
 
-This stack is for **local development**, not production. Default admin and database passwords are insecure; do not use real employee data with the defaults.
+This stack is for **local development**, not production. It is designed for Docker Compose v2 and a new installation. Current defaults use Frappe, ERPNext, and HRMS from the **develop** branches of their respective repositories (HRMS comes from this fork). The application source changes over time; successful smoke tests apply to the commits checked out at the time of the run, not all future upstream changes. Image defaults are versioned (bench v5.31.1, MariaDB 11.8, Redis 7.4-alpine). You can pin further to exact digests/commits after a passing test.
 
-## Fresh install
+## Fresh installation (new machine / new WSL2 distribution only)
 
-1. Install Docker Engine, Compose, and Git. Clone this fork and open the docker directory.
-2. Optionally create a local .env file with MARIADB_ROOT_PASSWORD and HRMS_ADMIN_PASSWORD. Without it, development defaults are 123 and admin.
-3. Run Docker Compose and inspect the Frappe logs. Initialization fetches Frappe, ERPNext and this HRMS fork.
-4. Open http://localhost:8000 on Windows; sign in as Administrator using your configured HRMS_ADMIN_PASSWORD.
-5. Verify installed apps using the bench site list-apps command; frappe, erpnext and hrms must appear.
+Prerequisites: Ubuntu/Linux, Git, Docker Engine or Docker Desktop with Linux containers, Docker Compose v2, sufficient memory and free disk space for Frappe's dependency installation, and network access to GitHub/Docker Hub.
 
-## Reliability improvements
+1. Clone this fork; check out the tested branch `fix/docker-initialization-safety-20261104` (until PR #1 is merged).
+2. From the repository's `docker` directory, review the local development passwords in `docker-compose.yml`. By default, MariaDB root password is `123` and HRMS admin password is `admin`. For better security, create an untracked `.env` file and override `MARIADB_ROOT_PASSWORD` and `HRMS_ADMIN_PASSWORD` before starting. Do not put real HR data in this development stack.
+3. Start from a **new empty Docker project and volumes** with `docker compose up -d`. Follow progress using `docker compose logs -f frappe`. Frappe downloads and installs the relevant apps. Database initialization can take substantial time.
+4. From Windows or the Linux machine, open http://localhost:8000. Use username `Administrator` and the configured HRMS admin password.
+5. Confirm apps using `docker compose exec frappe bash -lc 'cd /home/frappe/frappe-bench && bench --site hrms.localhost list-apps'`. The output must contain `frappe`, `erpnext`, and `hrms`.
+6. To exercise initial boot and restart checks on a **disposable, clean installation**, run `bash docker/smoke-test.sh` from the repository root. This script starts the Compose stack, tests the HTTP endpoint, validates installed apps, restarts all containers, and tests again. It never deletes volumes. CI runs the same script in an ephemeral GitHub Actions runner.
 
-- Startup fails fast and refuses to overwrite an existing incomplete site.
-- Local MariaDB client TLS is explicitly disabled by creating ~/.my.cnf with ssl=0 and 0600 permissions if no config already exists. This is development-only.
-- MariaDB/Redis readiness is checked before initialization; their health checks are also visible via Compose.
-- Frappe listens on 0.0.0.0 inside Docker; host ports 8000 and 9000 bind to 127.0.0.1 by default.
-- MariaDB and the Frappe bench directory use named Docker volumes, providing persistence once correctly initialized.
-- Image versions and application branches are configurable through .env. Defaults deliberately retain the upstream development-version choices; pin compatible, tested versions for reproducible deployments.
+One-line terminal commands to copy on a NEW Ubuntu/WSL2 system:
 
-## CRITICAL: existing installations must migrate bench files before switching to this Compose file
+```bash
+git clone --branch fix/docker-initialization-safety-20261104 https://github.com/youssefdaoud23/hrms.git
+```
+```bash
+cd hrms/docker
+```
+```bash
+docker compose config --quiet
+```
+```bash
+docker compose up -d
+```
+```bash
+docker compose logs --tail=100 frappe
+```
+```bash
+docker compose exec -T frappe bash -lc 'cd /home/frappe/frappe-bench && bench --site hrms.localhost list-apps'
+```
+```bash
+curl -I --max-time 10 http://localhost:8000
+```
 
-The old Compose setup stored /home/frappe/frappe-bench inside the existing container, **not** in a persistent volume. Applying the new Compose file and recreating that container immediately would mount an empty volume over the old bench. This would make existing site files, app code, configuration, and uploads inaccessible.
+## Safeguards
 
-**Do not directly execute a Compose up/recreate on an existing installation until completing this migration.**
+- `init.sh` aborts on errors; it **never silently overwrites or repairs** an incomplete site. If startup fails, inspect logs and preserve existing data before manual recovery.
+- The MariaDB CLI uses `ssl=0` for this local-only deployment to prevent the previously observed TLS/SSL import failure. It does not overwrite preexisting client config.
+- MariaDB/Redis readiness checks and Compose health checks reduce startup races.
+- Frappe binds to `0.0.0.0` **inside** Docker. Docker only publishes ports on the Linux/WSL2 host's `127.0.0.1` by default; do not make it internet-accessible using default credentials.
+- The MariaDB and Frappe bench directories use independent **Compose-project-scoped** named volumes. Changing the Compose project name changes the volumes the app uses.
+- The script checks all three installed apps before starting the server. A running container is not proof of a successful initialization.
 
-1. Record the current Frappe container ID/name, Compose project name, and MariaDB volume with docker compose ps, docker compose config, and docker volume ls.
-2. Stop Frappe writes before taking a consistent backup. Back up /home/frappe/frappe-bench from the **existing** Frappe container outside Docker, as well as the MariaDB data. Confirm the backup includes apps/, env/, Procfile and sites/hrms.localhost/site_config.json.
-3. Create and populate the named volume hrms-frappe-bench from the verified bench backup. Preserve the frappe user's ownership and file permissions. Check its content before recreating the existing container.
-4. Preserve and reuse the existing MariaDB volume (do not rename the Compose project accidentally). After confirming BOTH datasets are preserved, apply the updated Compose configuration.
-5. Verify installed apps, uploaded files, database connectivity and http://localhost:8000. Keep backups until verified.
+## CRITICAL: existing installations need migration, not a direct Compose upgrade
 
-Do not run docker compose down -v, bench reinstall or bench new-site --force to perform this migration.
+The original `frappe/hrms` Compose file kept `/home/frappe/frappe-bench` **inside the Frappe container**. The updated Compose file mounts a **new persistent volume** there. If you simply recreate the original container, the volume will be empty and existing apps, site files, configs, and uploads can become inaccessible. The MariaDB image default also changes from `10.8` to `11.8`, which is a major DB version change and MUST NOT be applied automatically to existing MariaDB data.
 
-## Helpful one-line commands
+**Do not run the updated Compose file against an existing installation until BOTH data migration and MariaDB upgrade planning are complete.**
 
-- Container status: docker compose ps
-- Application logs: docker compose logs --tail=100 frappe
-- Installed apps: docker compose exec frappe bash -lc 'cd /home/frappe/frappe-bench && bench --site hrms.localhost list-apps'
-- HTTP check: curl -I --max-time 10 http://localhost:8000
+1. Capture the current container name/ID, Compose project name, current Docker volume names, and versions. Preserve a backup of `/home/frappe/frappe-bench` from the OLD Frappe container, including all site config files, database credentials, encryption keys, file attachments and logs. Take a verified MariaDB database backup while writes are stopped.
+2. Keep the existing MariaDB 10.8 image for the initial migration by setting `MARIADB_IMAGE=mariadb:10.8` in a local untracked `docker/.env` file. Do not change database major versions until a separately planned and verified MariaDB upgrade.
+3. Populate the **new project-scoped Frappe bench volume** from the verified bench backup before allowing the updated Compose configuration to recreate the Frappe container. Preserve the non-root `frappe` user's ownership and permissions. Check the restored data and verify the existing MariaDB volume is still the one in use.
+4. Only after these backups and checks should you recreate the application with the updated Compose file and test HTTP, app installation, and data continuity. Keep original backups until validation succeeds.
 
-If the old installation reports that tabDefaultValue is missing, site bootstrap did not complete. Back up the files, inspect whether the database is empty, and repair it explicitly rather than resetting data on startup.
+Never run `docker compose down -v`, `bench reinstall`, or `bench new-site --force` as a migration shortcut.
 
-Changing HRMS_HOST_BIND from 127.0.0.1 to a public interface can expose an insecure development app. Never do so with default passwords, no TLS, or real HR records.
+## Diagnostics
+
+- Container status: `docker compose ps`
+- Logs: `docker compose logs --tail=100 frappe`
+- Check installed apps: `docker compose exec -T frappe bash -lc 'cd /home/frappe/frappe-bench && bench --site hrms.localhost list-apps'`
+- HTTP check: `curl -I --max-time 10 http://localhost:8000`
+- Fresh installation/restart smoke test (only on disposable environments): `bash docker/smoke-test.sh`
+
+If Frappe reports a missing `tabDefaultValue` table, initial SQL import did not finish. The new script will refuse to silently reuse this incomplete site; verify the DB contents and repair/recover it explicitly.
+
+Do not attempt WSL2 container migration from the old Compose file until these safeguards are completed.
