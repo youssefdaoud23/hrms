@@ -1,31 +1,56 @@
-version: "3.8" # Updated version
+# Development-only Compose stack. See docker/README.md before upgrading an existing deployment.
 services:
   mariadb:
-    image: mariadb:10.8
+    image: ${MARIADB_IMAGE:-mariadb:11.8}
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
-      - --skip-innodb-read-only-compressed # Temporary fix for MariaDB 10.6
     environment:
-      MYSQL_ROOT_PASSWORD: 123
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-123}
     volumes:
       - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MARIADB_ROOT_PASSWORD\" mariadb -uroot -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
 
   redis:
-    image: redis:alpine
+    image: ${REDIS_IMAGE:-redis:7.4-alpine}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
 
   frappe:
-    image: frappe/bench:latest
+    image: ${FRAPPE_BENCH_IMAGE:-frappe/bench:v5.31.1}
     command: bash /workspace/init.sh
+    depends_on:
+      - mariadb
+      - redis
     environment:
-      - SHELL=/bin/bash
+      SHELL: /bin/bash
+      FRAPPE_BIND_ADDR: 0.0.0.0
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-123}
+      HRMS_ADMIN_PASSWORD: ${HRMS_ADMIN_PASSWORD:-admin}
+      HRMS_SITE_NAME: ${HRMS_SITE_NAME:-hrms.localhost}
+      FRAPPE_BRANCH: ${FRAPPE_BRANCH:-develop}
+      ERPNEXT_BRANCH: ${ERPNEXT_BRANCH:-develop}
+      HRMS_BRANCH: ${HRMS_BRANCH:-develop}
+      HRMS_APP_REPO: ${HRMS_APP_REPO:-https://github.com/youssefdaoud23/hrms.git}
     working_dir: /home/frappe
     volumes:
       - .:/workspace
+      - frappe-bench-data:/home/frappe/frappe-bench
     ports:
-      - 8000:8000
-      - 9000:9000
+      - "${HRMS_HOST_BIND:-127.0.0.1}:${HRMS_HTTP_PORT:-8000}:8000"
+      - "${HRMS_HOST_BIND:-127.0.0.1}:${HRMS_SOCKETIO_PORT:-9000}:9000"
+    restart: unless-stopped
 
 volumes:
   mariadb-data:
+  frappe-bench-data:

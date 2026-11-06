@@ -1,0 +1,27 @@
+name: HRMS Docker fresh-install smoke test
+
+on:
+  pull_request:
+    paths:
+      - "docker/**"
+      - ".github/workflows/docker-fresh-install.yml"
+  workflow_dispatch:
+
+jobs:
+  fresh-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check script syntax and Docker Compose
+        run: bash -n docker/init.sh && bash -n docker/smoke-test.sh && docker compose -f docker/docker-compose.yml config --quiet
+      - name: Verify clean environment and restart persistence
+        env:
+          HRMS_SMOKE_TIMEOUT_SECONDS: "2700"
+        run: bash docker/smoke-test.sh
+      - name: Show logs if smoke test fails
+        if: failure()
+        run: docker compose -f docker/docker-compose.yml logs --tail=180 || true
+      - name: Stop ephemeral GitHub runner containers
+        if: always()
+        run: docker compose -f docker/docker-compose.yml down || true

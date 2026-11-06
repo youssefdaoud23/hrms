@@ -1,0 +1,31 @@
+name: Docker development setup checks
+
+on:
+  push:
+    paths:
+      - "docker/init.sh"
+      - "docker/docker-compose.yml"
+      - "docker/README.md"
+      - ".github/workflows/docker-dev-check.yml"
+  pull_request:
+    paths:
+      - "docker/init.sh"
+      - "docker/docker-compose.yml"
+      - "docker/README.md"
+      - ".github/workflows/docker-dev-check.yml"
+  workflow_dispatch:
+
+jobs:
+  static-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check bootstrap script syntax
+        run: bash -n docker/init.sh
+      - name: Check Compose interpolations
+        run: docker compose -f docker/docker-compose.yml config --quiet
+      - name: Confirm fail-fast and non-destructive guards
+        run: |
+          grep -q 'set -Eeuo pipefail' docker/init.sh
+          grep -q 'manual recovery' docker/init.sh
+          if grep -q 'new-site.*--force\|reinstall --yes' docker/init.sh; then exit 1; fi
