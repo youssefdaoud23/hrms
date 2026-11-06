@@ -44,6 +44,17 @@ if [[ "$ready" -ne 1 ]]; then
     exit 1
 fi
 
+# A fresh named Docker volume may be owned by root. The official bench image
+# runs as the non-root frappe user with passwordless sudo.
+mkdir -p "$BENCH_DIR"
+if [[ ! -w "$BENCH_DIR" ]]; then
+    sudo chown "$(id -u):$(id -g)" "$BENCH_DIR"
+fi
+if [[ ! -w "$BENCH_DIR" ]]; then
+    echo "Cannot write to bench volume: $BENCH_DIR" >&2
+    exit 1
+fi
+
 if [[ ! -d "$BENCH_DIR/apps/frappe" ]]; then
     if [[ -d "$BENCH_DIR" && -n "$(ls -A "$BENCH_DIR")" ]]; then
         echo "Existing bench directory is incomplete. Inspect $BENCH_DIR before retrying." >&2
