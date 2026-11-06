@@ -75,20 +75,24 @@ It takes care of installation, setup, upgrades, monitoring, maintenance and supp
 
 
 ## Development setup
-### Docker
-You need Docker, docker-compose and git setup on your machine. Refer [Docker documentation](https://docs.docker.com/). After that, run the following commands:
+### Docker (this fork)
+
+For reproducible local installation on WSL2 or Linux, use the [Docker setup, smoke-test, and migration guide](docker/README.md). It requires Docker Compose v2. To test the new setup from a **fresh environment**, run these one-line commands:
+
+```bash
+git clone --branch fix/docker-initialization-safety-20261104 https://github.com/youssefdaoud23/hrms.git
 ```
-git clone https://github.com/frappe/hrms
+```bash
 cd hrms/docker
-docker-compose up
+```
+```bash
+docker compose up -d
+```
+```bash
+docker compose logs --tail=100 frappe
 ```
 
-Wait for some time until the setup script creates a site. After that you can access `http://localhost:8000` in your browser and the login screen for HR should show up.
-
-Use the following credentials to log in:
-
-- Username: `Administrator`
-- Password: `admin`
+Open `http://localhost:8000` when initialization finishes. The local development defaults are `Administrator` / `admin`; set safe credentials in `docker/.env` before creating a real site. **Do not use these commands to upgrade an existing HRMS Docker installation** without migrating the old container's bench directory and planning the MariaDB version change as documented in [docker/README.md](docker/README.md).
 
 ### Local
 
