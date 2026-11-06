@@ -37,12 +37,43 @@ docker compose exec -T frappe bash -lc 'cd /home/frappe/frappe-bench && bench --
 curl -I --max-time 10 http://localhost:8000
 ```
 
+## Test next to your existing WSL2 installation (without touching it)
+
+If your current WSL2 installation already listens on ports 8000 and 9000, **do not** use the same Compose project or ports for a test. Create a separate clone, project name, and port mapping as follows. These commands are each a single line:
+
+```bash
+git clone --branch fix/docker-initialization-safety-20261104 https://github.com/youssefdaoud23/hrms.git ~/hrms-test
+```
+```bash
+cd ~/hrms-test/docker
+```
+```bash
+printf 'COMPOSE_PROJECT_NAME=hrms-test\nHRMS_HTTP_PORT=8010\nHRMS_SOCKETIO_PORT=9010\n' > .env
+```
+```bash
+docker compose config --quiet
+```
+```bash
+docker compose up -d
+```
+```bash
+docker compose logs --tail=100 frappe
+```
+```bash
+curl -I --max-time 10 http://localhost:8010
+```
+```bash
+bash smoke-test.sh
+```
+
+When initialization completes, visit http://localhost:8010 from Windows. The test app runs in its own Compose project and volumes; it does not connect to the old HRMS database, unless you deliberately override the service configuration. On your machine, verify that ports 8010 and 9010 are free first. Do not use `docker compose down -v` against either project.
+
 ## Safeguards
 
 - `init.sh` aborts on errors; it **never silently overwrites or repairs** an incomplete site. If startup fails, inspect logs and preserve existing data before manual recovery.
 - The MariaDB CLI uses `ssl=0` for this local-only deployment to prevent the previously observed TLS/SSL import failure. It does not overwrite preexisting client config.
 - MariaDB/Redis readiness checks and Compose health checks reduce startup races.
-- Frappe binds to `0.0.0.0` **inside** Docker. Docker only publishes ports on the Linux/WSL2 host's `127.0.0.1` by default; do not make it internet-accessible using default credentials.
+- Frappe binds to `0.0.0.0` **inside** Docker. Docker publishes ports on the Linux/WSL2 host's `127.0.0.1` by default; optional `HRMS_HTTP_PORT` and `HRMS_SOCKETIO_PORT` avoid collisions. Do not make it internet-accessible using default credentials.
 - The MariaDB and Frappe bench directories use independent **Compose-project-scoped** named volumes. Changing the Compose project name changes the volumes the app uses.
 - The script checks all three installed apps before starting the server. A running container is not proof of a successful initialization.
 
