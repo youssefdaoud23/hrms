@@ -5,6 +5,7 @@
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 site="${HRMS_SITE_NAME:-hrms.localhost}"
+http_port="${HRMS_HTTP_PORT:-8000}"
 timeout_seconds="${HRMS_SMOKE_TIMEOUT_SECONDS:-2700}"
 
 print_logs() {
@@ -17,7 +18,7 @@ wait_for_http() {
     local deadline=$((SECONDS + timeout_seconds))
     local status
     while ((SECONDS < deadline)); do
-        status="$(curl --max-time 10 --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/ || true)"
+        status="$(curl --max-time 10 --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${http_port}/" || true)"
         if [[ "$status" =~ ^(200|301|302|303|307|308)$ ]]; then
             echo "HRMS HTTP check passed ($status)"
             return 0
