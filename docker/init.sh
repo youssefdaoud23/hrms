@@ -1,42 +1,44 @@
-#!bin/bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-if [ -d "/home/frappe/frappe-bench/apps/frappe" ]; then
-    echo "Bench already exists, skipping init"
-    cd frappe-bench
-    bench start
-else
-    echo "Creating new bench..."
+# Preserve the bench and site data in the docker/runtime bind mount.
+export FRAPPE_BIND_ADDR=0.0.0.0
+if [[ -n "${NVM_DIR:-}" && -n "${NODE_VERSION_DEVELOP:-}" ]]; then
+  export PATH="${NVM_DIR}/versions/node/v${NODE_VERSION_DEVELOP}/bin:${PATH}"
 fi
-
-export PATH="${NVM_DIR}/versions/node/v${NODE_VERSION_DEVELOP}/bin/:${PATH}"
-
-bench init --skip-redis-config-generation frappe-bench
-
-cd frappe-bench
-
-# Use containers instead of localhost
+BENCH=/home/frappe/persist/frappe-bench
+cd /home/frappe/persist
+if [[ ! -d "$BENCH/apps/frappe" ]]; then
+  if [[ -e "$BENCH" ]]; then
+    echo "ERROR: partial bench exists; refusing to overwrite it" >&2
+    exit 3
+  fi
+  bench init --skip-redis-config-generation --frappe-branch develop frappe-bench
+fi
+cd "$BENCH"
 bench set-mariadb-host mariadb
 bench set-redis-cache-host redis://redis:6379
 bench set-redis-queue-host redis://redis:6379
 bench set-redis-socketio-host redis://redis:6379
+sed -i '/^redis_/d; /^watch:/d' Procfile
 
-# Remove redis, watch from Procfile
-sed -i '/redis/d' ./Procfile
-sed -i '/watch/d' ./Procfile
+if [[ ! -d apps/erpnext ]]; then
+  bench get-app --branch develop erpnext
+fi
+if [[ ! -d apps/hrms ]]; then
+  bench get-app --branch develop hrms
+fi
 
-bench get-app erpnext
-bench get-app hrms
-
-bench new-site hrms.localhost \
---force \
---mariadb-root-password 123 \
---admin-password admin \
---no-mariadb-socket
-
-bench --site hrms.localhost install-app hrms
-bench --site hrms.localhost set-config developer_mode 1
-bench --site hrms.localhost enable-scheduler
-bench --site hrms.localhost clear-cache
+SITE=sites/hrms.localhost/site_config.json
+RECOVERY=/home/frappe/persist/recovery/site_config.json
+if [[ ! -f "$SITE" && -f "$RECOVERY" ]]; then
+  mkdir -p sites/hrms.localhost
+  install -m 600 "$RECOVERY" "$SITE"
+fi
+if [[ ! -f "$SITE" ]]; then
+  echo "ERROR: no hrms.localhost site config. Refusing automatic site creation." >&2
+  exit 4
+fi
+mkdir -p sites/hrms.localhost/logs sites/hrms.localhost/public/files sites/hrms.localhost/private/files
 bench use hrms.localhost
-
-bench start
+exec bench start
