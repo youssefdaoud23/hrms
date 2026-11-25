@@ -156,8 +156,6 @@ before_app_uninstall = "hrms.setup.before_app_uninstall"
 # 	"Event": "frappe.desk.doctype.event.event.has_permission",
 # }
 
-has_upload_permission = {"Employee": "erpnext.setup.doctype.employee.employee.has_upload_permission"}
-
 # DocType Class
 # ---------------
 # Override standard doctype classes
@@ -401,6 +399,7 @@ ignore_links_on_delete = ["PWA Notification"]
 
 company_data_to_be_ignored = [
 	"Salary Component Account",
+	"Expense Claim Account",
 	"Salary Structure",
 	"Salary Structure Assignment",
 	"Payroll Period",

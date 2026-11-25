@@ -15,6 +15,8 @@ const emit = defineEmits(["close", "show_manager", "toggle_team"]);
 
 const frappe = window.frappe;
 const __ = window.__;
+// written out whole, so Tailwind's scan finds both
+const UP_ARROW = frappe.utils.is_rtl() ? "lucide-arrow-up-left" : "lucide-arrow-up-right";
 
 const on_leave = computed(() => leave_label(props.node.leave));
 const reports = computed(() =>
@@ -26,7 +28,7 @@ const manager_company = computed(() =>
 );
 
 function open_profile() {
-	frappe.set_route("Form", "Employee", props.node.id);
+	frappe.set_route("employee-profile", props.node.id);
 }
 
 // desk's composer keeps the email on the employee's timeline. Without permission, the mail app opens.
@@ -58,7 +60,7 @@ function compose_email() {
 			<Button
 				variant="ghost"
 				icon="lucide-x"
-				class="-mr-1.5 -mt-1.5"
+				class="-me-1.5 -mt-1.5"
 				:aria-label="__('Close')"
 				@click="emit('close')"
 			/>
@@ -94,7 +96,8 @@ function compose_email() {
 			</div>
 			<div v-if="node.manager" class="flex items-center gap-2">
 				<dt
-					class="lucide-arrow-up-right size-4 shrink-0 text-ink-gray-5"
+					:class="UP_ARROW"
+					class="size-4 shrink-0 text-ink-gray-5"
 					:aria-label="__('Reports to')"
 				/>
 				<dd class="min-w-0 truncate text-ink-gray-7">
@@ -125,18 +128,7 @@ function compose_email() {
 		</dl>
 
 		<div class="mt-4 flex items-center gap-2">
-			<Button
-				v-if="node.can_open"
-				class="flex-1"
-				:label="__('Open profile')"
-				@click="open_profile"
-			/>
-			<!-- a disabled button takes no pointer events, so the span carries the tooltip -->
-			<Tooltip v-else :text="__('You do not have access to this profile')">
-				<span class="flex flex-1">
-					<Button class="w-full" :label="__('Open profile')" disabled />
-				</span>
-			</Tooltip>
+			<Button class="flex-1" :label="__('Open profile')" @click="open_profile" />
 			<Tooltip v-if="node.email" :text="__('Email')">
 				<Button
 					v-if="node.can_email"

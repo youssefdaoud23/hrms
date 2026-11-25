@@ -1,0 +1,34 @@
+name: HRMS Docker fresh-install smoke test
+
+on:
+  push:
+    branches: ["integration/**", "main"]
+    paths: ["docker/**", ".github/workflows/docker-fresh-install.yml"]
+  pull_request:
+    paths:
+      - "docker/**"
+      - ".github/workflows/docker-fresh-install.yml"
+  workflow_dispatch:
+
+jobs:
+  fresh-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate isolated development credentials
+        run: |
+          umask 077
+          printf "MARIADB_ROOT_PASSWORD=%s\nHRMS_ADMIN_PASSWORD=%s\nHRMS_BRANCH=%s\n" "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" > docker/.env
+      - name: Check script syntax and Docker Compose
+        run: bash -n docker/init.sh && bash -n docker/smoke-test.sh && docker compose -f docker/docker-compose.yml config --quiet
+      - name: Verify clean environment and restart persistence
+        env:
+          HRMS_SMOKE_TIMEOUT_SECONDS: "2700"
+        run: bash docker/smoke-test.sh
+      - name: Show logs if smoke test fails
+        if: failure()
+        run: docker compose -f docker/docker-compose.yml logs --tail=180 || true
+      - name: Stop ephemeral GitHub runner containers
+        if: always()
+        run: docker compose -f docker/docker-compose.yml down || true
